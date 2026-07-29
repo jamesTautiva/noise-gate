@@ -1,0 +1,232 @@
+name: Build and Bundle
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Build Windows VST3
+        run: cargo run --package xtask -- bundle noise-gate --release
+        
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: noise-gate-windows
+          path: target/bundled/noise-gate.vst3
+
+  build-macos-intel:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: x86_64-apple-darwin
+          
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Build macOS Intel VST3
+        run: cargo run --package xtask -- bundle noise-gate --release --target x86_64-apple-darwin
+        
+      - name: Upload macOS Intel Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: noise-gate-macos-intel
+          path: target/x86_64-apple-darwin/release/bundled/noise-gate.vst3
+
+  build-macos-arm:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: aarch64-apple-darwin
+          
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Build macOS ARM VST3
+        run: cargo run --package xtask -- bundle noise-gate --release --target aarch64-apple-darwin
+        
+      - name: Upload macOS ARM Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: noise-gate-macos-arm
+          path: target/aarch64-apple-darwin/release/bundled/noise-gate.vst3
+
+  build-macos-universal:
+    runs-on: macos-latest
+    needs: [build-macos-intel, build-macos-arm]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Intel Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: noise-gate-macos-intel
+          path: artifacts/intel
+          
+      - name: Download ARM Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: noise-gate-macos-arm
+          path: artifacts/arm
+          
+      - name: Create Universal Binary
+        run: |
+          mkdir -p artifacts/universal/noise-gate.vst3/Contents
+          cp -r artifacts/intel/noise-gate.vst3/Contents/* artifacts/universal/noise-gate.vst3/Contents/
+          lipo -create -output artifacts/universal/noise-gate.vst3/Contents/MacOS/noise-gate \
+            artifacts/intel/noise-gate.vst3/Contents/MacOS/noise-gate \
+            artifacts/arm/noise-gate.vst3/Contents/MacOS/noise-gate
+          
+      - name: Upload Universal Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: noise-gate-macos-universal
+          path: artifacts/universal/noise-gate.vst3
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxext-dev libgl1-mesa-dev
+          
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Cache cargo build
+        uses: actions/cache@v3
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          
+      - name: Build Linux VST3
+        run: cargo run --package xtask -- bundle noise-gate --release
+        
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: noise-gate-linux
+          path: target/bundled/noise-gate.vst3
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-macos-universal, build-linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: noise-gate-windows
+          
+      - name: Download macOS Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: noise-gate-macos-universal
+          
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: noise-gate-linux
+          
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            noise-gate.vst3
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
