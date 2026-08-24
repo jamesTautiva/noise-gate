@@ -19,12 +19,13 @@ impl PeakDetector {
     }
 
     pub fn process(&mut self, input: f32) -> bool {
+        let input_level = input.abs();
         if self.is_open {
-            if input < self.close_threshold {
+            if input_level < self.close_threshold {
                 self.is_open = false;
             }
         } else {
-            if input >= self.open_threshold {
+            if input_level >= self.open_threshold {
                 self.is_open = true;
             }
         }

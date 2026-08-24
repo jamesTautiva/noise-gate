@@ -1,18 +1,15 @@
-use crate::presets::Preset;
 use crossbeam::atomic::AtomicCell;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct GuiState {
     pub waveform: Arc<WaveformData>,
-    pub current_preset: Arc<AtomicCell<Preset>>,
 }
 
 impl GuiState {
     pub fn new() -> Self {
         Self {
             waveform: Arc::new(WaveformData::new()),
-            current_preset: Arc::new(AtomicCell::new(Preset::Default)),
         }
     }
 }

@@ -22,3 +22,14 @@ pub fn flush_to_zero_bitwise(x: f32) -> f32 {
     // or zero
     f32::from_bits(x.to_bits() & 0x7F800000)
 }
+
+/// Sanitize audio sample by replacing NaN and Inf with zero
+/// This prevents DAWs from auto-muting channels due to invalid values
+#[inline]
+pub fn sanitize_sample(x: f32) -> f32 {
+    if x.is_finite() {
+        x
+    } else {
+        0.0
+    }
+}

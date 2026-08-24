@@ -40,12 +40,15 @@ impl PickDetector {
     }
 }
 
-/// Palm Mute Detector - Detecta riffs muteados
+/// Palm Mute Detector - Detecta riffs muteados con filtros reales
 pub struct PalmMuteDetector {
     low_freq_energy: f32,
     high_freq_energy: f32,
     threshold: f32,
     smoothing: f32,
+    // Filtros internos para separar bandas
+    low_freq_filter: crate::dsp::filters::LowPassFilter,
+    high_freq_filter: crate::dsp::filters::HighPassFilter,
 }
 
 impl Default for PalmMuteDetector {
@@ -53,8 +56,10 @@ impl Default for PalmMuteDetector {
         Self {
             low_freq_energy: 0.0,
             high_freq_energy: 0.0,
-            threshold: 0.3,
+            threshold: 2.0, // Ratio típico para palm mute: bajas > 2x altas
             smoothing: 0.95,
+            low_freq_filter: crate::dsp::filters::LowPassFilter::new(),
+            high_freq_filter: crate::dsp::filters::HighPassFilter::new(),
         }
     }
 }
@@ -64,16 +69,36 @@ impl PalmMuteDetector {
         self.threshold = threshold;
     }
 
-    pub fn process(&mut self, sample: f32) -> bool {
-        // Palm mute tiene más energía en bajas frecuencias que en altas
-        // Esta es una simplificación - en producción usar filtros reales
+    pub fn set_sample_rate(&mut self, _sample_rate: f32) {
+        // Configurar filtros: LPF a 200Hz para bajas, HPF a 1500Hz para altas
+        let low_cutoff = 200.0;
+        let high_cutoff = 1500.0;
         
-        let low_energy = sample.abs(); // Simplificación: asume sample ya filtrado
-        let high_energy = (sample * 0.5).abs(); // Simplificación para altas
+        self.low_freq_filter.set_cutoff(low_cutoff);
+        self.high_freq_filter.set_cutoff(high_cutoff);
+    }
+
+    pub fn process(&mut self, sample: f32, sample_rate: f32) -> bool {
+        // Calcular alpha para filtros
+        let low_rc = 1.0 / (2.0 * std::f32::consts::PI * 200.0);
+        let low_alpha = 1.0 / (1.0 + sample_rate * low_rc);
         
+        let high_rc = 1.0 / (2.0 * std::f32::consts::PI * 1500.0);
+        let high_alpha = high_rc / (high_rc + 1.0 / sample_rate);
+        
+        // Filtrar en bandas separadas
+        let low_band = self.low_freq_filter.process(sample, low_alpha);
+        let high_band = self.high_freq_filter.process(sample, high_alpha);
+        
+        // Calcular energía en cada banda
+        let low_energy = low_band.abs();
+        let high_energy = high_band.abs();
+        
+        // Suavizar energía
         self.low_freq_energy = self.low_freq_energy * self.smoothing + low_energy * (1.0 - self.smoothing);
         self.high_freq_energy = self.high_freq_energy * self.smoothing + high_energy * (1.0 - self.smoothing);
         
+        // Palm mute: mucho más energía en bajas que en altas
         if self.high_freq_energy > 0.001 {
             let ratio = self.low_freq_energy / self.high_freq_energy;
             ratio > self.threshold
@@ -83,79 +108,105 @@ impl PalmMuteDetector {
     }
 }
 
-/// Smart Gate - Modo automático que ajusta parámetros
+/// Smart Gate - Modo automático que ajusta attack/release dinámicamente
 pub struct SmartGate {
     avg_level: f32,
-    target_threshold: f32,
     smoothing: f32,
+    dynamic_attack: f32,
+    dynamic_release: f32,
 }
 
 impl Default for SmartGate {
     fn default() -> Self {
         Self {
             avg_level: 0.0,
-            target_threshold: -30.0,
             smoothing: 0.99,
+            dynamic_attack: 10.0, // ms
+            dynamic_release: 100.0, // ms
         }
     }
 }
 
 impl SmartGate {
-    pub fn process(&mut self, level: f32) -> f32 {
+    pub fn process(&mut self, level: f32, _sample_rate: f32) -> (f32, f32) {
         // Calcular nivel promedio del audio
         self.avg_level = self.avg_level * self.smoothing + level * (1.0 - self.smoothing);
         
-        // Threshold automático basado en nivel promedio
-        let db_level = 20.0 * self.avg_level.max(0.0001).log10();
-        self.target_threshold = db_level - 15.0; // 15dB por debajo del promedio
+        // Ajustar attack/release dinámicamente basado en nivel promedio
+        // Nivel alto → attack más rápido, release más lento
+        // Nivel bajo → attack más lento, release más rápido
         
-        self.target_threshold.clamp(-60.0, -10.0)
+        let level_factor = self.avg_level.clamp(0.0, 1.0);
+        
+        // Attack: 5ms a 50ms basado en nivel
+        self.dynamic_attack = 5.0 + level_factor * 45.0;
+        
+        // Release: 50ms a 500ms basado en nivel
+        self.dynamic_release = 50.0 + (1.0 - level_factor) * 450.0;
+        
+        (self.dynamic_attack, self.dynamic_release)
     }
 }
 
-/// Adaptive Threshold - Threshold que cambia dinámicamente
+/// Adaptive Threshold - Threshold que cambia dinámicamente en dB
 pub struct AdaptiveThreshold {
-    current_threshold: f32,
-    target_threshold: f32,
+    current_threshold_db: f32,
     speed: f32,
-    min_threshold: f32,
-    max_threshold: f32,
+    min_threshold_db: f32,
+    max_threshold_db: f32,
 }
 
 impl Default for AdaptiveThreshold {
     fn default() -> Self {
         Self {
-            current_threshold: -30.0,
-            target_threshold: -30.0,
+            current_threshold_db: -30.0,
             speed: 0.1,
-            min_threshold: -60.0,
-            max_threshold: 0.0,
+            min_threshold_db: -60.0,
+            max_threshold_db: -10.0,
         }
     }
 }
 
 impl AdaptiveThreshold {
     pub fn set_speed(&mut self, speed: f32) {
-        self.speed = speed;
+        self.speed = speed.clamp(0.01, 1.0);
     }
 
-    pub fn process(&mut self, input_level: f32, base_threshold: f32) -> f32 {
-        let db_input = 20.0 * input_level.max(0.0001).log10();
+    pub fn set_base_threshold(&mut self, base_db: f32) {
+        self.current_threshold_db = base_db;
+    }
+
+    pub fn process(&mut self, input_level_linear: f32, base_threshold_db: f32) -> f32 {
+        // Convertir input level de lineal a dB
+        let input_level_db = if input_level_linear > 1e-6 {
+            20.0 * input_level_linear.log10()
+        } else {
+            -100.0
+        };
         
-        // Ajustar target threshold basado en input
-        if db_input > base_threshold + 10.0 {
-            // Input fuerte, subir threshold
-            self.target_threshold = (self.target_threshold + 1.0).min(self.max_threshold);
-        } else if db_input < base_threshold - 5.0 {
-            // Input débil, bajar threshold
-            self.target_threshold = (self.target_threshold - 0.5).max(self.min_threshold);
-        }
+        // Ajustar threshold dinámicamente basado en input level
+        // Si input es más fuerte que base, subir threshold gradualmente
+        // Si input es más débil que base, bajar threshold gradualmente
         
-        // Suavizar transición
-        self.current_threshold = self.current_threshold * (1.0 - self.speed) 
-            + self.target_threshold * self.speed;
+        let target_threshold = if input_level_db > base_threshold_db + 10.0 {
+            // Input muy fuerte, subir threshold para evitar gating excesivo
+            (base_threshold_db + (input_level_db - base_threshold_db) * 0.5).min(self.max_threshold_db)
+        } else if input_level_db < base_threshold_db - 5.0 {
+            // Input débil, bajar threshold para capturar señal débil
+            (base_threshold_db - 5.0).max(self.min_threshold_db)
+        } else {
+            // Input en rango normal, mantener base threshold
+            base_threshold_db
+        };
         
-        self.current_threshold
+        // Suavizar transición del threshold
+        self.current_threshold_db = self.current_threshold_db * (1.0 - self.speed) 
+            + target_threshold * self.speed;
+        
+        // Clamp a rango válido
+        self.current_threshold_db = self.current_threshold_db.clamp(self.min_threshold_db, self.max_threshold_db);
+        
+        self.current_threshold_db
     }
 }
 

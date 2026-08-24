@@ -6,8 +6,6 @@ pub struct EnvelopeFollower {
     release_coeff: f32,
     hold_counter: f32,
     hold_samples: f32,
-    adaptive_release: bool,
-    prev_target: f32,
 }
 
 impl EnvelopeFollower {
@@ -18,8 +16,6 @@ impl EnvelopeFollower {
             release_coeff: 0.0,
             hold_counter: 0.0,
             hold_samples: 0.0,
-            adaptive_release: false,
-            prev_target: 0.0,
         }
     }
 
@@ -32,38 +28,32 @@ impl EnvelopeFollower {
         self.hold_samples = (hold_ms / 1000.0) * sample_rate;
     }
 
-    pub fn set_adaptive_release(&mut self, adaptive: bool) {
-        self.adaptive_release = adaptive;
-    }
-
     pub fn process(&mut self, target: f32) -> f32 {
-        let coeff = if target > self.envelope {
-            self.attack_coeff
-        } else {
-            // Adaptive release: ajustar según la diferencia de target
-            if self.adaptive_release {
-                let target_diff = (self.prev_target - target).abs();
-                // Si la diferencia es grande, release más rápido
-                let adaptive_factor = (target_diff * 2.0).min(1.0);
-                self.release_coeff * (1.0 + adaptive_factor * 4.0)
-            } else {
-                self.release_coeff
-            }
-        };
+        let target_level = target.abs();
         
-        self.prev_target = flush_to_zero(target);
-        
-        // Si el target es alto (gate abierto), resetear el contador de hold
-        if target > 0.5 {
+        // Si el target es alto (attack), resetear el contador de hold
+        if target_level > self.envelope {
             self.hold_counter = self.hold_samples;
         }
         
-        // Aplicar hold si el contador es positivo
+        // Determinar si estamos en attack o release
+        let coeff = if target_level > self.envelope {
+            self.attack_coeff
+        } else {
+            self.release_coeff
+        };
+        
+        // Aplicar hold: durante hold, solo permitir attack, no release
         if self.hold_counter > 0.0 {
             self.hold_counter -= 1.0;
-            // Durante hold, mantener el envelope alto (no decay)
+            // Durante hold, solo actualizar si estamos en attack
+            if target_level > self.envelope {
+                self.envelope = target_level + coeff * (self.envelope - target_level);
+            }
+            // Si estamos en release durante hold, mantener el envelope actual
         } else {
-            self.envelope = target + coeff * (self.envelope - target);
+            // Después del hold, seguir la señal con attack/release normales
+            self.envelope = target_level + coeff * (self.envelope - target_level);
         }
         
         flush_to_zero(self.envelope)
@@ -73,7 +63,6 @@ impl EnvelopeFollower {
     pub fn reset(&mut self) {
         self.envelope = 0.0;
         self.hold_counter = 0.0;
-        self.prev_target = 0.0;
     }
 }
 

@@ -13,22 +13,26 @@ pub struct NoiseGate {
 impl Default for NoiseGate {
     fn default() -> Self {
         let params = Arc::new(NoiseGateParams::default());
-        let processor = NoiseGateProcessor::new(params.clone());
+        
+        // Crear GUI state inmediatamente para asegurar conexión
+        let gui_state = Arc::new(gui::state::GuiState::new());
+        let mut processor = NoiseGateProcessor::new(params.clone());
+        processor.set_gui_waveform(gui_state.waveform.clone());
         
         Self {
             params,
             processor,
-            gui_state: None,
+            gui_state: Some(gui_state),
         }
     }
 }
 
 impl Plugin for NoiseGate {
     const NAME: &'static str = "DjentCut Noise";
-    const VENDOR: &'static str = "James Tautiva";
-    const URL: &'static str = "https://example.com";
-    const EMAIL: &'static str = "tu@email.com";
-    const VERSION: &'static str = "0.1.0";
+    const VENDOR: &'static str = "ShadowDSP";
+    const URL: &'static str = "https://jamestautiva.netlify.app/";
+    const EMAIL: &'static str = "tautivamolanoj@gmail.com";
+    const VERSION: &'static str = "1.0.0";
 
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
         main_input_channels: NonZeroU32::new(2),
@@ -44,13 +48,7 @@ impl Plugin for NoiseGate {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        // Create GUI state if it doesn't exist
-        if self.gui_state.is_none() {
-            let gui_state = Arc::new(gui::state::GuiState::new());
-            self.processor.set_gui_waveform(gui_state.waveform.clone());
-            self.gui_state = Some(gui_state);
-        }
-        
+        // GUI state ya existe en default(), usar directamente
         gui::create(self.params.clone(), self.gui_state.clone().unwrap())
     }
 

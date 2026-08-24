@@ -27,9 +27,6 @@ pub struct NoiseGateParams {
     #[id = "lookahead"]
     pub lookahead_ms: FloatParam,
 
-    #[id = "adaptive_release"]
-    pub adaptive_release: BoolParam,
-
     #[id = "display_mode"]
     pub display_mode: FloatParam,
 
@@ -135,11 +132,6 @@ impl Default for NoiseGateParams {
                 FloatRange::Linear { min: 0.0, max: 10.0 },
             )
             .with_unit(" ms"),
-
-            adaptive_release: BoolParam::new(
-                "Adaptive Release",
-                false,
-            ),
 
             display_mode: FloatParam::new(
                 "Display Mode",

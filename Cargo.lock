@@ -845,6 +845,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
 
 [[package]]
+name = "djentCutNoise"
+version = "1.0.0"
+dependencies = [
+ "atomic_float",
+ "criterion",
+ "crossbeam",
+ "egui 0.27.2",
+ "nih_plug",
+ "nih_plug_egui",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dlib"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1711,20 +1725,6 @@ name = "nohash-hasher"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bf50223579dc7cdcfb3bfcacf7069ff68243f8c363f62ffa99cf000a6b9c451"
-
-[[package]]
-name = "noise-gate"
-version = "0.1.0"
-dependencies = [
- "atomic_float",
- "criterion",
- "crossbeam",
- "egui 0.27.2",
- "nih_plug",
- "nih_plug_egui",
- "serde",
- "serde_json",
-]
 
 [[package]]
 name = "nom"
